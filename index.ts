@@ -3,7 +3,6 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { OrderType, PrismaClient } from "./generated/prisma/client.js";
 import jwt, { type JwtPayload } from "jsonwebtoken";
 import { OrderedMap, Queue } from "js-sdsl";
-import { toLowerCase } from "zod";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
@@ -258,27 +257,22 @@ app.post("/order", authMiddleware, async (req, res) => {
     if (!ORDERBOOKS[stock_id])
       ORDERBOOKS[stock_id] = { BIDS: new OrderedMap(), ASKS: new OrderedMap() };
 
-    let newTotalQuantity = 0;
-    let newOrders: Queue<ORDER_TYPE> = new Queue();
-
-    let prevInfo = ORDERBOOKS[stock_id].BIDS.getElementByKey(price);
-    if (prevInfo) {
-      newTotalQuantity = prevInfo.TotalQuantity;
-      newOrders = prevInfo.orders;
+    let priceLvlData = ORDERBOOKS[stock_id].BIDS.getElementByKey(price);
+    if (!priceLvlData) {
+      ORDERBOOKS[stock_id].BIDS.setElement(price, {
+        TotalQuantity: 0,
+        orders: new Queue(),
+      });
+      priceLvlData = ORDERBOOKS[stock_id].BIDS.getElementByKey(price);
     }
 
-    newTotalQuantity += qty;
-    newOrders.push({
+    priceLvlData!.TotalQuantity += qty;
+    priceLvlData!.orders.push({
       userId: userId,
       createdAt: new Date(),
       filledQty: 0,
       qty: qty,
       orderId: placedOrder.id,
-    });
-
-    ORDERBOOKS[stock_id].BIDS.setElement(price, {
-      TotalQuantity: newTotalQuantity,
-      orders: newOrders,
     });
 
     BALANCES[userId]![USD_BALANCE_ID]! -= required_bal;
