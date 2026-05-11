@@ -46,6 +46,7 @@ export default class OrderBook {
     price: number,
     qty: number,
     userId: string,
+    maxMarketBidSpend?: number,
   ): {
     newOrderId: ORDER_ID;
     totalFilledQuantity: number;
@@ -302,4 +303,4 @@ export default class OrderBook {
 // ISSUESSSSSSSSSSSSS
 
 // -> HOW WOULD YOU CHECK BALANCE IN MARKET ORDER WHILE UR IN ORDERBOOK, SO IT NEEDS ACCESS TO BALANCE IN MARKET ORDER
-// -> CHECK HOW YOU DO ITERATOR COMPARISON IN JS
+// -> separate logic for market and limit orders into other functions in createOrder
