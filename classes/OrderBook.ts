@@ -1,4 +1,4 @@
-import { OrderedMap, Queue } from "js-sdsl";
+import { OrderedMap, LinkList } from "js-sdsl";
 import type { CURRENCY_SYMBOL, ORDER_ID, SIDE, TYPE } from "../types/order.js";
 
 type ORDER = {
@@ -13,7 +13,7 @@ type ORDER = {
   createdAt: Date;
 };
 
-type PRICE_LEVEL = { totalQuantity: number; orders: Queue<ORDER> };
+type PRICE_LEVEL = { totalQuantity: number; orders: LinkList<ORDER> };
 
 type FILLS_INFO = {
   buyerId: string;
@@ -74,14 +74,14 @@ export default class OrderBook {
       if (!this.orderBook[symbol].BIDS?.getElementByKey(price)) {
         this.orderBook[symbol].BIDS.setElement(price, {
           totalQuantity: 0,
-          orders: new Queue(),
+          orders: new LinkList(),
         });
       }
     } else {
       if (!this.orderBook[symbol].ASKS?.getElementByKey(price)) {
         this.orderBook[symbol].ASKS.setElement(price, {
           totalQuantity: 0,
-          orders: new Queue(),
+          orders: new LinkList(),
         });
       }
     }
@@ -144,7 +144,7 @@ export default class OrderBook {
           if (frontOrder!.filledQty == frontOrder!.qty) {
             // remove from orders and orderbook
             delete this.orders[frontOrder!.orderId];
-            orders.pop();
+            orders.popFront();
           }
         }
         if (orders.empty()) {
@@ -164,18 +164,18 @@ export default class OrderBook {
       if (side == "BUY")
         prevPriceLevel = this.orderBook[symbol].BIDS.getElementByKey(price) || {
           totalQuantity: 0,
-          orders: new Queue(),
+          orders: new LinkList(),
         };
       else
         prevPriceLevel = prevPriceLevel = this.orderBook[
           symbol
         ].ASKS.getElementByKey(price) || {
           totalQuantity: 0,
-          orders: new Queue(),
+          orders: new LinkList(),
         };
 
       prevPriceLevel.totalQuantity += currentOrder.qty - currentOrder.filledQty;
-      prevPriceLevel.orders.push(currentOrder);
+      prevPriceLevel.orders.pushFront(currentOrder);
 
       // put into orderbook object
       if (side == "BUY")
@@ -205,25 +205,47 @@ export default class OrderBook {
   } => {
     //
     if (this.orders[orderId]) {
+      // means its in order book right now
       let currentOrder = this.orders[orderId];
       let pendingQty = currentOrder.qty - currentOrder.filledQty;
 
-      //
+      // remove from order object
       delete this.orders[orderId];
-      if (currentOrder.side == "BUY") {
-        let priceLevel = this.orderBook[
-          currentOrder.symbol
-        ]!.BIDS.getElementByKey(currentOrder.price)!;
 
-        priceLevel.totalQuantity -= pendingQty;
-        let toPutBack = [];
-        while (priceLevel.orders.front()!.orderId != currentOrder.orderId) {
-          toPutBack.push(priceLevel.orders.front());
-          priceLevel.orders.pop();
-        }
-        priceLevel.orders.pop();
-      } else {
+      //remove from orderbook
+      let priceLevel;
+      if (currentOrder.side == "BUY")
+        priceLevel = this.orderBook[currentOrder.symbol]!.BIDS.getElementByKey(
+          currentOrder.price,
+        )!;
+      else
+        priceLevel = this.orderBook[currentOrder.symbol]!.ASKS.getElementByKey(
+          currentOrder.price,
+        )!;
+
+      priceLevel.totalQuantity -= pendingQty;
+
+      let findCurrentOrder = priceLevel.orders.begin();
+      while (
+        !findCurrentOrder.equals(priceLevel.orders.end()) &&
+        findCurrentOrder.pointer.orderId != orderId
+      ) {
+        findCurrentOrder = findCurrentOrder.next();
       }
+
+      if (findCurrentOrder.equals(priceLevel.orders.end())) throw new Error(); // TODO : MAKE THIS SOME ORDERBOOK ERROR LATER
+
+      priceLevel.orders.eraseElementByIterator(findCurrentOrder);
+
+      if (priceLevel.totalQuantity == 0)
+        if (currentOrder.side == "BUY")
+          this.orderBook[currentOrder.symbol]!.BIDS.eraseElementByKey(
+            currentOrder.price,
+          );
+        else
+          this.orderBook[currentOrder.symbol]!.ASKS.eraseElementByKey(
+            currentOrder.price,
+          );
     }
     return { status: "NOT_CANCELLABLE" };
   };
@@ -279,5 +301,5 @@ export default class OrderBook {
 
 // ISSUESSSSSSSSSSSSS
 
-// -> KEEP ORDERS PER PRICE LEVEL AS LINKED LIST NOT AS QUEUE
 // -> HOW WOULD YOU CHECK BALANCE IN MARKET ORDER WHILE UR IN ORDERBOOK, SO IT NEEDS ACCESS TO BALANCE IN MARKET ORDER
+// -> CHECK HOW YOU DO ITERATOR COMPARISON IN JS
