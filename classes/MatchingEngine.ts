@@ -61,12 +61,20 @@ export default class MatchingEngine {
     };
   }
 
-  cancelOrder(orderId: ORDER_ID): { status: "CANCELLED" | "ALREADY_FILLED" } {
+  cancelOrder(orderId: ORDER_ID): {
+    status: "CANCELLED" | "ALREADY_FILLED" | "NOT_CANCELLABLE";
+  } {
     try {
       // try cancelling order
       // get pendign fills and abort it
+      const { status, order } = this.orderBook.cancelOrder(orderId);
+
+      if (status == "NOT_CANCELLABLE") {
+        return { status: "NOT_CANCELLABLE" };
+      }
+
       const { filledQuantity, totalQuantity, price, side, userId, symbol } =
-        this.orderBook.cancelOrder(orderId);
+        order!;
 
       if (filledQuantity == totalQuantity) {
         return { status: "ALREADY_FILLED" };
