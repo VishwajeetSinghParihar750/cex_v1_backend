@@ -17,7 +17,7 @@ type ORDER_TYPE = {
   orderId: string;
   createdAt: Date;
 };
-type PRICE_LEVEL_TYPE = { TotalQuantity: number; orders: Queue<ORDER_TYPE> };
+type PRICE_LEVEL_TYPE = { totalQuantity: number; orders: Queue<ORDER_TYPE> };
 
 const BALANCES: Record<string, Record<string, number>> = {};
 // user_id to stock_id to balance matching
@@ -153,8 +153,8 @@ const matchOrders = async (stock_id: string) => {
 
       // change balance
 
-      topBids.TotalQuantity -= toExchangeQty;
-      topAsks.TotalQuantity -= toExchangeQty;
+      topBids.totalQuantity -= toExchangeQty;
+      topAsks.totalQuantity -= toExchangeQty;
 
       if (!BALANCES[currentAskOrder!.userId])
         BALANCES[currentAskOrder!.userId] = { USD_BALANCE_ID: 0 };
@@ -219,8 +219,8 @@ const matchOrders = async (stock_id: string) => {
     }
 
     // changing orderbook
-    if (topBids.TotalQuantity == 0) bids.eraseElementByKey(topBidPrice);
-    if (topAsks.TotalQuantity == 0) asks.eraseElementByKey(topAskPrice);
+    if (topBids.totalQuantity == 0) bids.eraseElementByKey(topBidPrice);
+    if (topAsks.totalQuantity == 0) asks.eraseElementByKey(topAskPrice);
   }
 };
 
@@ -260,13 +260,13 @@ app.post("/order", authMiddleware, async (req, res) => {
     let priceLvlData = ORDERBOOKS[stock_id].BIDS.getElementByKey(price);
     if (!priceLvlData) {
       ORDERBOOKS[stock_id].BIDS.setElement(price, {
-        TotalQuantity: 0,
+        totalQuantity: 0,
         orders: new Queue(),
       });
       priceLvlData = ORDERBOOKS[stock_id].BIDS.getElementByKey(price);
     }
 
-    priceLvlData!.TotalQuantity += qty;
+    priceLvlData!.totalQuantity += qty;
     priceLvlData!.orders.push({
       userId: userId,
       createdAt: new Date(),
@@ -303,16 +303,16 @@ app.post("/order", authMiddleware, async (req, res) => {
     if (!ORDERBOOKS[stock_id])
       ORDERBOOKS[stock_id] = { BIDS: new OrderedMap(), ASKS: new OrderedMap() };
 
-    let newTotalQuantity = 0;
+    let newtotalQuantity = 0;
     let newOrders: Queue<ORDER_TYPE> = new Queue();
 
     let prevInfo = ORDERBOOKS[stock_id].ASKS.getElementByKey(price);
     if (prevInfo) {
-      newTotalQuantity = prevInfo.TotalQuantity;
+      newtotalQuantity = prevInfo.totalQuantity;
       newOrders = prevInfo.orders;
     }
 
-    newTotalQuantity += qty;
+    newtotalQuantity += qty;
     newOrders.push({
       userId: userId,
       createdAt: new Date(),
@@ -322,7 +322,7 @@ app.post("/order", authMiddleware, async (req, res) => {
     });
 
     ORDERBOOKS[stock_id].ASKS.setElement(price, {
-      TotalQuantity: newTotalQuantity,
+      totalQuantity: newtotalQuantity,
       orders: newOrders,
     });
 

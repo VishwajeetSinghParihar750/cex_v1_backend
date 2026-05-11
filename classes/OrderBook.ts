@@ -5,12 +5,15 @@ type ORDER = {
   userId: string;
   price: number;
   qty: number;
+  side: SIDE;
+  symbol: CURRENCY_SYMBOL;
+  type: TYPE;
   filledQty: number;
   orderId: string;
   createdAt: Date;
 };
 
-type PRICE_LEVEL = { TotalQuantity: number; orders: Queue<ORDER> };
+type PRICE_LEVEL = { totalQuantity: number; orders: Queue<ORDER> };
 
 type FILLS_INFO = {
   buyerId: string;
@@ -20,6 +23,7 @@ type FILLS_INFO = {
   price: number;
   bidPrice: number;
 }[];
+type DEPTH = { price: number; quantity: number }[];
 
 type ORDERBOOK = Partial<
   Record<
@@ -61,19 +65,22 @@ export default class OrderBook {
       price: price,
       qty: qty,
       userId: userId,
+      side,
+      type,
+      symbol,
     };
 
     if (side == "BUY") {
       if (!this.orderBook[symbol].BIDS?.getElementByKey(price)) {
         this.orderBook[symbol].BIDS.setElement(price, {
-          TotalQuantity: 0,
+          totalQuantity: 0,
           orders: new Queue(),
         });
       }
     } else {
       if (!this.orderBook[symbol].ASKS?.getElementByKey(price)) {
         this.orderBook[symbol].ASKS.setElement(price, {
-          TotalQuantity: 0,
+          totalQuantity: 0,
           orders: new Queue(),
         });
       }
@@ -132,7 +139,7 @@ export default class OrderBook {
 
           frontOrder!.filledQty += toExchangeQty;
           currentOrder.filledQty += toExchangeQty;
-          topOppositeSidePriceLevel.TotalQuantity -= toExchangeQty;
+          topOppositeSidePriceLevel.totalQuantity -= toExchangeQty;
 
           if (frontOrder!.filledQty == frontOrder!.qty) {
             // remove from orders and orderbook
@@ -156,18 +163,18 @@ export default class OrderBook {
 
       if (side == "BUY")
         prevPriceLevel = this.orderBook[symbol].BIDS.getElementByKey(price) || {
-          TotalQuantity: 0,
+          totalQuantity: 0,
           orders: new Queue(),
         };
       else
         prevPriceLevel = prevPriceLevel = this.orderBook[
           symbol
         ].ASKS.getElementByKey(price) || {
-          TotalQuantity: 0,
+          totalQuantity: 0,
           orders: new Queue(),
         };
 
-      prevPriceLevel.TotalQuantity += currentOrder.qty - currentOrder.filledQty;
+      prevPriceLevel.totalQuantity += currentOrder.qty - currentOrder.filledQty;
       prevPriceLevel.orders.push(currentOrder);
 
       // put into orderbook object
@@ -186,18 +193,91 @@ export default class OrderBook {
   cancelOrder = (
     orderId: ORDER_ID,
   ): {
-    filledQuantity: number;
-    totalQuantity: number;
-    price: number;
-    side: SIDE;
-    userId: string;
-    symbol: CURRENCY_SYMBOL;
+    status: "NOT_CANCELLABLE" | "CANCELLED";
+    order?: {
+      filledQuantity: number;
+      totalQuantity: number;
+      price: number;
+      side: SIDE;
+      userId: string;
+      symbol: CURRENCY_SYMBOL;
+    };
   } => {
     //
-    if (!this.orders[orderId]) {
+    if (this.orders[orderId]) {
+      let currentOrder = this.orders[orderId];
+      let pendingQty = currentOrder.qty - currentOrder.filledQty;
+
+      //
+      delete this.orders[orderId];
+      if (currentOrder.side == "BUY") {
+        let priceLevel = this.orderBook[
+          currentOrder.symbol
+        ]!.BIDS.getElementByKey(currentOrder.price)!;
+
+        priceLevel.totalQuantity -= pendingQty;
+        let toPutBack = [];
+        while (priceLevel.orders.front()!.orderId != currentOrder.orderId) {
+          toPutBack.push(priceLevel.orders.front());
+          priceLevel.orders.pop();
+        }
+        priceLevel.orders.pop();
+      } else {
+      }
     }
+    return { status: "NOT_CANCELLABLE" };
   };
 
-  getOrder = (orderId: ORDER_ID) => {};
-  getDepth = (symbol: CURRENCY_SYMBOL) => {};
+  getOrder = (orderId: ORDER_ID) => {
+    if (this.orders[orderId]) return structuredClone(this.orders[orderId]);
+
+    if (false) {
+      // check in db, etc if its already filled and is there
+    }
+
+    return null;
+  };
+
+  // count is how many prices you want
+  getDepth = (
+    symbol: CURRENCY_SYMBOL,
+    count: number = 20,
+  ): { asks: DEPTH; bids: DEPTH } => {
+    let toReturn: { asks: DEPTH; bids: DEPTH } = { asks: [], bids: [] };
+
+    if (!this.orderBook[symbol]?.ASKS) return toReturn;
+
+    let countToReturn = Math.min(count, this.orderBook[symbol]!.ASKS.size());
+
+    let i = 0;
+    for (
+      let it = this.orderBook[symbol]!.ASKS.begin();
+      it != this.orderBook[symbol]!.ASKS.end() && i < countToReturn;
+      it = it.next(), i++
+    ) {
+      toReturn.asks.push({
+        price: it.pointer[0],
+        quantity: it.pointer[1].totalQuantity,
+      });
+    }
+
+    i = 0;
+    for (
+      let it = this.orderBook[symbol]!.BIDS.begin();
+      it != this.orderBook[symbol]!.BIDS.end() && i < countToReturn;
+      it = it.next(), i++
+    ) {
+      toReturn.bids.push({
+        price: it.pointer[0],
+        quantity: it.pointer[1].totalQuantity,
+      });
+    }
+
+    return toReturn;
+  };
 }
+
+// ISSUESSSSSSSSSSSSS
+
+// -> KEEP ORDERS PER PRICE LEVEL AS LINKED LIST NOT AS QUEUE
+// -> HOW WOULD YOU CHECK BALANCE IN MARKET ORDER WHILE UR IN ORDERBOOK, SO IT NEEDS ACCESS TO BALANCE IN MARKET ORDER
