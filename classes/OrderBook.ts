@@ -495,5 +495,4 @@ export default class OrderBook {
 
 // ISSUESSSSSSSSSSSSS
 
-// -> HOW WOULD YOU CHECK BALANCE IN MARKET ORDER WHILE UR IN ORDERBOOK, SO IT NEEDS ACCESS TO BALANCE IN MARKET ORDER
-// -> separate logic for market and limit orders into other functions in createOrder
+// -> YOU NEED TO SAVE FILLS BY ID , AND SAVE FILL iDS IN ORDER, coz we need to return fills per order

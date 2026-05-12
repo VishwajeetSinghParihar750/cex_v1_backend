@@ -7,8 +7,9 @@ export default class Balances {
     Partial<Record<CURRENCY_SYMBOL, number>>
   > = {}; // userid to symbol to balance
 
-  getBalance = (userId: string, symbol: CURRENCY_SYMBOL) => {
-    return this.perSymbolBalances[userId]?.[symbol] || 0;
+  getBalance = (userId: string, symbol: CURRENCY_SYMBOL | undefined) => {
+    if (symbol) return this.perSymbolBalances[userId]?.[symbol] || 0;
+    return this.perSymbolBalances[userId];
   };
 
   addBalance = (userId: string, symbol: CURRENCY_SYMBOL, balance: number) => {

@@ -24,7 +24,7 @@ export default class MatchingEngine {
     orderId?: ORDER_ID;
     fills?: FILLS_INFO;
   } {
-    const initialUSDBalance = this.balances.getBalance(userId, "USD");
+    const initialUSDBalance = this.balances.getBalance(userId, "USD") as number;
     let sliipageMoney = 0;
 
     if (side == "BUY") {
@@ -32,7 +32,7 @@ export default class MatchingEngine {
 
       if (type == "LIMIT") {
         const neededBal = price! * qty;
-        const availBal = this.balances.getBalance(userId, "USD");
+        const availBal = this.balances.getBalance(userId, "USD") as number;
 
         if (neededBal > availBal) throw new InsufficientBalanceError();
 
@@ -42,7 +42,7 @@ export default class MatchingEngine {
         // get market price
         let marketPrice = 10;
         const neededBal = marketPrice * qty;
-        const availBal = this.balances.getBalance(userId, "USD");
+        const availBal = this.balances.getBalance(userId, "USD") as number;
 
         if (neededBal > availBal) throw new InsufficientBalanceError();
 
@@ -53,7 +53,7 @@ export default class MatchingEngine {
       }
     } else {
       // check balance
-      const availBal = this.balances.getBalance(userId, symbol);
+      const availBal = this.balances.getBalance(userId, symbol) as number;
       if (availBal < qty) throw new InsufficientBalanceError();
 
       // deduct askers balance
