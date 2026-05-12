@@ -1,7 +1,8 @@
+import "dotenv/config";
 import MatchingEngine from "./classes/MatchingEngine.js";
 import { createClient } from "redis";
 
-const matchineEngine = new MatchingEngine();
+const matchingEngine = new MatchingEngine();
 const redisClient = createClient({ url: process.env.REDIS_URL! });
 
 type ENGINE_REQUEST_TYPE =
@@ -40,7 +41,7 @@ const handleGetDepthRequest = (
   engineRequest: ENGINE_REQUEST,
 ): ENGINE_RESPONSE => {
   try {
-    let depth = matchineEngine.getDepth(engineRequest.payload.symbol);
+    let depth = matchingEngine.getDepth(engineRequest.payload.symbol);
     return {
       requestId: engineRequest.requestId,
       type: "depth",
@@ -55,7 +56,7 @@ const handleGetOrdersRequest = (
   engineRequest: ENGINE_REQUEST,
 ): ENGINE_RESPONSE => {
   try {
-    let orders = matchineEngine.getOrders();
+    let orders = matchingEngine.getOrders();
     return {
       requestId: engineRequest.requestId,
       type: "orders",
@@ -70,7 +71,7 @@ const handleGetFillsRequest = (
   engineRequest: ENGINE_REQUEST,
 ): ENGINE_RESPONSE => {
   try {
-    let fills = matchineEngine.getFills();
+    let fills = matchingEngine.getFills();
     return {
       requestId: engineRequest.requestId,
       type: "fills",
@@ -84,7 +85,7 @@ const handleGetOrderRequest = (
   engineRequest: ENGINE_REQUEST,
 ): ENGINE_RESPONSE => {
   try {
-    let order = matchineEngine.getOrder(engineRequest.payload.orderId);
+    let order = matchingEngine.getOrder(engineRequest.payload.orderId);
     if (!order) throw new Error();
 
     return {
@@ -100,7 +101,7 @@ const handleGetBalanceRequest = (
   engineRequest: ENGINE_REQUEST,
 ): ENGINE_RESPONSE => {
   try {
-    let balance = matchineEngine.getBalance(
+    let balance = matchingEngine.getBalance(
       engineRequest.payload.userId,
       engineRequest.payload.symbol,
     );
@@ -118,7 +119,7 @@ const handleCancelOrderRequest = (
   engineRequest: ENGINE_REQUEST,
 ): ENGINE_RESPONSE => {
   try {
-    let { status } = matchineEngine.cancelOrder(engineRequest.payload.orderId);
+    let { status } = matchingEngine.cancelOrder(engineRequest.payload.orderId);
     if (status != "CANCELLED") throw new Error();
 
     return { requestId: engineRequest.requestId, type: "order_cancelled" };
@@ -132,7 +133,7 @@ const handleCreateOrderRequest = (
 ): ENGINE_RESPONSE => {
   try {
     const { type, side, price, qty, symbol, userId } = engineRequest.payload;
-    let { status, orderId, fills } = matchineEngine.createOrder(
+    let { status, orderId, fills } = matchingEngine.createOrder(
       type,
       side,
       symbol,
@@ -161,9 +162,10 @@ const handleAddBalanceRequest = (
   engineRequest: ENGINE_REQUEST,
 ): ENGINE_RESPONSE => {
   try {
-    matchineEngine.addBalance(
+    matchingEngine.addBalance(
       engineRequest.payload.userId,
       engineRequest.payload.amount,
+      engineRequest.payload.symbol,
     );
     return { requestId: engineRequest.requestId, type: "balance_updated" };
   } catch (error) {
@@ -172,36 +174,42 @@ const handleAddBalanceRequest = (
 };
 
 const handleEngineRequest = (engineRequest: ENGINE_REQUEST) => {
+  let response;
   switch (engineRequest.type) {
     case "add_balance":
-      handleAddBalanceRequest(engineRequest);
+      response = handleAddBalanceRequest(engineRequest);
       break;
     case "cancel_order":
-      handleCancelOrderRequest(engineRequest);
+      response = handleCancelOrderRequest(engineRequest);
       break;
 
     case "create_order":
-      handleCreateOrderRequest(engineRequest);
+      response = handleCreateOrderRequest(engineRequest);
       break;
     case "get_balance":
-      handleGetBalanceRequest(engineRequest);
+      response = handleGetBalanceRequest(engineRequest);
       break;
     case "get_depth":
-      handleGetDepthRequest(engineRequest);
+      response = handleGetDepthRequest(engineRequest);
       break;
     case "get_fills":
-      handleGetFillsRequest(engineRequest);
+      response = handleGetFillsRequest(engineRequest);
       break;
     case "get_order":
-      handleGetOrderRequest(engineRequest);
+      response = handleGetOrderRequest(engineRequest);
       break;
     case "get_orders":
-      handleGetOrdersRequest(engineRequest);
+      response = handleGetOrdersRequest(engineRequest);
       break;
 
     default:
       break;
   }
+
+  redisClient.rPush(
+    `engine_response_${engineRequest.requestId}`,
+    JSON.stringify(response),
+  );
 };
 
 const setupEngine = async () => {
@@ -210,9 +218,11 @@ const setupEngine = async () => {
   });
 
   await redisClient.connect();
+  console.log("REDIS SETUP DONE, WAITING FOR ENGINE REQUESTS");
 
   while (true) {
     const engineRequest = await redisClient.blPop("engine_request", 0);
+    console.log("RECEIVED ENGINE REQUEST : ", engineRequest);
     if (engineRequest) handleEngineRequest(JSON.parse(engineRequest.element));
   }
 };

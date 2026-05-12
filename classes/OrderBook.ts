@@ -190,7 +190,6 @@ export default class OrderBook {
 
       assert(!orders.empty());
 
-      // TODO : ADD PRICE CONSTRAINT HERE
       while (currentOrder.filledQty < currentOrder.qty) {
         let frontOrder = orders.front();
         let pendingQty = frontOrder!.qty - frontOrder!.filledQty;

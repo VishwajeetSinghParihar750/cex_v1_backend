@@ -148,9 +148,9 @@ export default class MatchingEngine {
   getBalance(userId: string, symbol: CURRENCY_SYMBOL) {
     return this.balances.getBalance(userId, symbol);
   }
-  addBalance(userId: string, amount: number) {
+  addBalance(userId: string, amount: number, symbol: CURRENCY_SYMBOL) {
     // u can only deposit usd
-    this.balances.addBalance(userId, "USD", amount);
+    this.balances.addBalance(userId, symbol, amount);
   }
   getDepth(symbol: CURRENCY_SYMBOL) {
     return this.orderBook.getDepth(symbol);
