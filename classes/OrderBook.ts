@@ -16,14 +16,17 @@ type ORDER = {
 
 type PRICE_LEVEL = { totalQuantity: number; orders: LinkList<ORDER> };
 
-export type FILLS_INFO = {
+type FILL_INFO = {
+  fillId: string;
   buyerId: string;
   sellerId: string;
   symbol: CURRENCY_SYMBOL;
   qty: number;
   price: number;
   bidPrice: number;
-}[];
+};
+
+export type FILLS_INFO = FILL_INFO[];
 type DEPTH = { price: number; quantity: number }[];
 
 type ORDERBOOK = Partial<
@@ -39,7 +42,7 @@ type ORDERBOOK = Partial<
 export default class OrderBook {
   orderBook: ORDERBOOK = {};
   orders: Record<ORDER_ID, ORDER> = {}; // here keep ref of item in orderbook, to not double memeory
-  fills: FILLS_INFO = [];
+  fills: Record<string, FILL_INFO> = {};
 
   private placeMarketBuyOrder = (
     type: TYPE,
@@ -101,6 +104,7 @@ export default class OrderBook {
         );
 
         fillsToReturn.push({
+          fillId: crypto.randomUUID(),
           bidPrice: frontOrder!.price,
           buyerId: userId,
           sellerId: frontOrder!.userId,
@@ -131,7 +135,10 @@ export default class OrderBook {
     }
 
     // save fills
-    this.fills.push(...fillsToReturn);
+
+    fillsToReturn.forEach((fill) => {
+      this.fills[fill.fillId] = fill;
+    });
 
     return {
       fillsInfo: fillsToReturn,
@@ -194,6 +201,7 @@ export default class OrderBook {
         );
 
         fillsToReturn.push({
+          fillId: crypto.randomUUID(),
           bidPrice: Math.max(frontOrder!.price, currentOrder.price),
           sellerId: userId,
           buyerId: frontOrder!.userId,
@@ -217,7 +225,9 @@ export default class OrderBook {
       }
     }
 
-    this.fills.push(...fillsToReturn);
+    fillsToReturn.forEach((fill) => {
+      this.fills[fill.fillId] = fill;
+    });
 
     return {
       fillsInfo: fillsToReturn,
@@ -284,6 +294,7 @@ export default class OrderBook {
           );
 
           fillsToReturn.push({
+            fillId: crypto.randomUUID(),
             bidPrice: Math.max(frontOrder!.price, currentOrder.price),
             buyerId: side == "BUY" ? userId : frontOrder!.userId,
             sellerId: side == "SELL" ? userId : frontOrder!.userId,
@@ -338,7 +349,9 @@ export default class OrderBook {
       else this.orderBook[symbol].ASKS.setElement(price, prevPriceLevel);
     }
 
-    this.fills.push(...fillsToReturn);
+    fillsToReturn.forEach((fill) => {
+      this.fills[fill.fillId] = fill;
+    });
 
     return {
       fillsInfo: fillsToReturn,
@@ -445,7 +458,7 @@ export default class OrderBook {
   };
 
   getOrder = (orderId: ORDER_ID) => {
-    if (this.orders[orderId]) return structuredClone(this.orders[orderId]);
+    if (this.orders[orderId]) return { ...this.orders[orderId] };
 
     if (false) {
       // check in db, etc if its already filled and is there
@@ -492,7 +505,3 @@ export default class OrderBook {
     return toReturn;
   };
 }
-
-// ISSUESSSSSSSSSSSSS
-
-// -> YOU NEED TO SAVE FILLS BY ID , AND SAVE FILL iDS IN ORDER, coz we need to return fills per order
