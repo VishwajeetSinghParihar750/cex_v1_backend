@@ -16,7 +16,7 @@ type ORDER = {
 
 type PRICE_LEVEL = { totalQuantity: number; orders: LinkList<ORDER> };
 
-type FILLS_INFO = {
+export type FILLS_INFO = {
   buyerId: string;
   sellerId: string;
   symbol: CURRENCY_SYMBOL;

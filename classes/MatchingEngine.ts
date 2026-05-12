@@ -1,4 +1,4 @@
-import OrderBook from "./OrderBook.js";
+import OrderBook, { type FILLS_INFO } from "./OrderBook.js";
 import Balances from "./Balances.js";
 import type { CURRENCY_SYMBOL, ORDER_ID, SIDE, TYPE } from "../types/order.js";
 import { InsufficientBalanceError } from "./Errors/MatchingEngine.js";
@@ -19,7 +19,11 @@ export default class MatchingEngine {
     qty: number,
     userId: string,
     price?: number,
-  ): { status: "REJECTED" | "OPEN" | "FILLED"; orderId?: ORDER_ID } {
+  ): {
+    status: "REJECTED" | "OPEN" | "FILLED";
+    orderId?: ORDER_ID;
+    fills?: FILLS_INFO;
+  } {
     const initialUSDBalance = this.balances.getBalance(userId, "USD");
     let sliipageMoney = 0;
 
@@ -90,6 +94,7 @@ export default class MatchingEngine {
     return {
       status: totalFilledQuantity == qty ? "FILLED" : "OPEN",
       orderId: newOrderId,
+      fills: fillsInfo,
     };
   }
 

@@ -113,6 +113,7 @@ const handleGetBalanceRequest = (
     return { requestId: engineRequest.requestId, type: "error" };
   }
 };
+
 const handleCancelOrderRequest = (
   engineRequest: ENGINE_REQUEST,
 ): ENGINE_RESPONSE => {
@@ -121,6 +122,36 @@ const handleCancelOrderRequest = (
     if (status != "CANCELLED") throw new Error();
 
     return { requestId: engineRequest.requestId, type: "order_cancelled" };
+  } catch (error) {
+    return { requestId: engineRequest.requestId, type: "error" };
+  }
+};
+
+const handleCreateOrderRequest = (
+  engineRequest: ENGINE_REQUEST,
+): ENGINE_RESPONSE => {
+  try {
+    const { type, side, price, qty, symbol, userId } = engineRequest.payload;
+    let { status, orderId, fills } = matchineEngine.createOrder(
+      type,
+      side,
+      symbol,
+      qty,
+      userId,
+      price,
+    );
+    if (status == "REJECTED")
+      return {
+        requestId: engineRequest.requestId,
+        type: "error",
+        payload: "ORDER_REJECTED",
+      };
+
+    return {
+      requestId: engineRequest.requestId,
+      type: "order_created",
+      payload: { status, fills, orderId },
+    };
   } catch (error) {
     return { requestId: engineRequest.requestId, type: "error" };
   }
@@ -150,7 +181,7 @@ const handleEngineRequest = (engineRequest: ENGINE_REQUEST) => {
       break;
 
     case "create_order":
-      handleCancelOrderRequest(engineRequest);
+      handleCreateOrderRequest(engineRequest);
       break;
     case "get_balance":
       handleGetBalanceRequest(engineRequest);
