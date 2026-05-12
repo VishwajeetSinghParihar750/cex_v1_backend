@@ -1,5 +1,6 @@
 import { OrderedMap, LinkList } from "js-sdsl";
 import type { CURRENCY_SYMBOL, ORDER_ID, SIDE, TYPE } from "../types/order.js";
+import { assert } from "node:console";
 
 type ORDER = {
   userId: string;
@@ -39,19 +40,110 @@ export default class OrderBook {
   orderBook: ORDERBOOK = {};
   orders: Record<ORDER_ID, ORDER> = {}; // here keep ref of item in orderbook, to not double memeory
 
-  createOrder = (
+  private placeMarketBuyOrder = (
+    type: TYPE,
+    side: SIDE,
+    symbol: CURRENCY_SYMBOL,
+    qty: number,
+    userId: string,
+    maxMarketBidSpend: number, // TODO
+  ) => {
+    if (!this.orderBook[symbol]) {
+      this.orderBook[symbol] = {
+        ASKS: new OrderedMap(),
+        BIDS: new OrderedMap(),
+      };
+    }
+
+    let currentOrder: ORDER = {
+      createdAt: new Date(),
+      filledQty: 0,
+      orderId: crypto.randomUUID(),
+      price: 0, // 0 price means  market order
+      qty: qty,
+      userId: userId,
+      side,
+      type,
+      symbol,
+    };
+
+    let fillsToReturn: FILLS_INFO = [];
+
+    let oppositeSideOrders = this.orderBook[symbol].ASKS;
+
+    // try matching as much possible
+    while (
+      !oppositeSideOrders.empty() &&
+      currentOrder.filledQty < currentOrder.qty &&
+      maxMarketBidSpend > 0
+    ) {
+      let [topOppositeSidePrice, topOppositeSidePriceLevel] =
+        oppositeSideOrders.front()!;
+
+      let orders = topOppositeSidePriceLevel.orders;
+
+      assert(!orders.empty()); // if oders is empty then it should not be in oppositeSideOrders
+
+      while (currentOrder.filledQty < currentOrder.qty) {
+        let frontOrder = orders.front();
+        let pendingQty = frontOrder!.qty - frontOrder!.filledQty;
+
+        let maxExchangeQty = Math.min(
+          currentOrder.qty - currentOrder.filledQty,
+          pendingQty,
+        );
+
+        // TODO : HANDLE FLOATING POINT ERRORS HERE COZ OF DIVIDING
+        let toExchangeQty = Math.min(
+          maxExchangeQty,
+          maxMarketBidSpend / frontOrder!.price,
+        );
+
+        fillsToReturn.push({
+          bidPrice: frontOrder!.price,
+          buyerId: userId,
+          sellerId: frontOrder!.userId,
+          price: frontOrder!.price,
+          qty: toExchangeQty,
+          symbol,
+        });
+
+        frontOrder!.filledQty += toExchangeQty;
+        currentOrder.filledQty += toExchangeQty;
+        topOppositeSidePriceLevel.totalQuantity -= toExchangeQty;
+
+        if (frontOrder!.filledQty == frontOrder!.qty) {
+          // remove from orders and orderbook
+          delete this.orders[frontOrder!.orderId];
+          orders.popFront();
+        }
+
+        if (maxExchangeQty > toExchangeQty) {
+          maxMarketBidSpend = 0;
+          break;
+        } else maxMarketBidSpend -= frontOrder!.price * toExchangeQty;
+      }
+
+      if (orders.empty()) {
+        oppositeSideOrders.eraseElementByKey(topOppositeSidePrice);
+      }
+    }
+
+    return {
+      fillsInfo: fillsToReturn,
+      newOrderId: currentOrder.orderId,
+      totalFilledQuantity: currentOrder.filledQty,
+    };
+  };
+  // could pass order directly here
+  private placeMarketSellOrder = (
     type: TYPE,
     side: SIDE,
     symbol: CURRENCY_SYMBOL,
     price: number,
     qty: number,
     userId: string,
-    maxMarketBidSpend?: number,
-  ): {
-    newOrderId: ORDER_ID;
-    totalFilledQuantity: number;
-    fillsInfo: FILLS_INFO;
-  } => {
+  ) => {
     if (!this.orderBook[symbol]) {
       this.orderBook[symbol] = {
         ASKS: new OrderedMap(),
@@ -71,39 +163,95 @@ export default class OrderBook {
       symbol,
     };
 
-    if (side == "BUY") {
-      if (!this.orderBook[symbol].BIDS?.getElementByKey(price)) {
-        this.orderBook[symbol].BIDS.setElement(price, {
-          totalQuantity: 0,
-          orders: new LinkList(),
+    let fillsToReturn: FILLS_INFO = [];
+
+    let oppositeSideOrders = this.orderBook[symbol].BIDS;
+
+    // try matching as much possible
+    while (
+      !oppositeSideOrders.empty() &&
+      currentOrder.filledQty < currentOrder.qty
+    ) {
+      let [topOppositeSidePrice, topOppositeSidePriceLevel] =
+        oppositeSideOrders.front()!;
+
+      let orders = topOppositeSidePriceLevel.orders;
+
+      assert(!orders.empty());
+
+      // TODO : ADD PRICE CONSTRAINT HERE
+      while (currentOrder.filledQty < currentOrder.qty) {
+        let frontOrder = orders.front();
+        let pendingQty = frontOrder!.qty - frontOrder!.filledQty;
+
+        let toExchangeQty = Math.min(
+          currentOrder.qty - currentOrder.filledQty,
+          pendingQty,
+        );
+
+        fillsToReturn.push({
+          bidPrice: Math.max(frontOrder!.price, currentOrder.price),
+          sellerId: userId,
+          buyerId: frontOrder!.userId,
+          price: Math.min(frontOrder!.price, currentOrder.price),
+          qty: toExchangeQty,
+          symbol,
         });
+
+        frontOrder!.filledQty += toExchangeQty;
+        currentOrder.filledQty += toExchangeQty;
+        topOppositeSidePriceLevel.totalQuantity -= toExchangeQty;
+
+        if (frontOrder!.filledQty == frontOrder!.qty) {
+          // remove from orders and orderbook
+          delete this.orders[frontOrder!.orderId];
+          orders.popFront();
+        }
       }
-    } else {
-      if (!this.orderBook[symbol].ASKS?.getElementByKey(price)) {
-        this.orderBook[symbol].ASKS.setElement(price, {
-          totalQuantity: 0,
-          orders: new LinkList(),
-        });
+      if (orders.empty()) {
+        oppositeSideOrders.eraseElementByKey(topOppositeSidePrice);
       }
     }
+
+    return {
+      fillsInfo: fillsToReturn,
+      newOrderId: currentOrder.orderId,
+      totalFilledQuantity: currentOrder.filledQty,
+    };
+  };
+
+  private placeLimitOrder = (
+    type: TYPE,
+    side: SIDE,
+    symbol: CURRENCY_SYMBOL,
+    price: number,
+    qty: number,
+    userId: string,
+  ) => {
+    if (!this.orderBook[symbol]) {
+      this.orderBook[symbol] = {
+        ASKS: new OrderedMap(),
+        BIDS: new OrderedMap(),
+      };
+    }
+
+    let currentOrder: ORDER = {
+      createdAt: new Date(),
+      filledQty: 0,
+      orderId: crypto.randomUUID(),
+      price: price,
+      qty: qty,
+      userId: userId,
+      side,
+      type,
+      symbol,
+    };
 
     let fillsToReturn: FILLS_INFO = [];
 
     let oppositeSideOrders;
     if (side == "BUY") oppositeSideOrders = this.orderBook[symbol].ASKS;
     else oppositeSideOrders = this.orderBook[symbol].BIDS;
-
-    const shouldExchange = (
-      topOppositeSidePrice: number,
-      price: number,
-      side: SIDE,
-    ): boolean => {
-      if (side == "BUY") {
-        return topOppositeSidePrice <= price;
-      } else {
-        return topOppositeSidePrice >= price;
-      }
-    };
 
     // try matching as much possible
     while (
@@ -116,9 +264,9 @@ export default class OrderBook {
       let orders = topOppositeSidePriceLevel.orders;
 
       if (
-        (type == "LIMIT" &&
-          shouldExchange(topOppositeSidePrice, price, side)) ||
-        type == "MARKET"
+        side == "BUY"
+          ? topOppositeSidePrice <= currentOrder.price
+          : topOppositeSidePrice >= currentOrder.price
       ) {
         while (currentOrder.filledQty < currentOrder.qty && !orders.empty()) {
           let frontOrder = orders.front();
@@ -131,8 +279,8 @@ export default class OrderBook {
 
           fillsToReturn.push({
             bidPrice: Math.max(frontOrder!.price, currentOrder.price),
-            buyerId: userId,
-            sellerId: frontOrder!.userId,
+            buyerId: side == "BUY" ? userId : frontOrder!.userId,
+            sellerId: side == "SELL" ? userId : frontOrder!.userId,
             price: Math.min(frontOrder!.price, currentOrder.price),
             qty: toExchangeQty,
             symbol,
@@ -156,7 +304,7 @@ export default class OrderBook {
 
     // for limit order
     // sit on orderbook for pending order
-    if (type == "LIMIT" && currentOrder.filledQty < currentOrder.qty) {
+    if (currentOrder.filledQty < currentOrder.qty) {
       // put into orders object
       this.orders[currentOrder.orderId] = currentOrder;
 
@@ -189,6 +337,43 @@ export default class OrderBook {
       newOrderId: currentOrder.orderId,
       totalFilledQuantity: currentOrder.filledQty,
     };
+  };
+
+  createOrder = (
+    type: TYPE,
+    side: SIDE,
+    symbol: CURRENCY_SYMBOL,
+    qty: number,
+    userId: string,
+    price?: number,
+    maxMarketBidSpend?: number,
+  ): {
+    newOrderId: ORDER_ID;
+    totalFilledQuantity: number;
+    fillsInfo: FILLS_INFO;
+  } => {
+    if (type == "MARKET") {
+      if (side == "BUY")
+        return this.placeMarketBuyOrder(
+          type,
+          side,
+          symbol,
+          qty,
+          userId,
+          maxMarketBidSpend!,
+        );
+      else
+        return this.placeMarketSellOrder(
+          type,
+          side,
+          symbol,
+          price!,
+          qty,
+          userId,
+        );
+    } else {
+      return this.placeLimitOrder(type, side, symbol, price!, qty, userId);
+    }
   };
 
   cancelOrder = (

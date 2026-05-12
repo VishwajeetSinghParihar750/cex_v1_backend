@@ -16,20 +16,37 @@ export default class MatchingEngine {
     type: TYPE,
     side: SIDE,
     symbol: CURRENCY_SYMBOL,
-    price: number,
     qty: number,
     userId: string,
-  ): { status: "REJECTED" | "OPEN" | "FILLED"; orderId: ORDER_ID } {
+    price?: number,
+  ): { status: "REJECTED" | "OPEN" | "FILLED"; orderId?: ORDER_ID } {
+    const initialUSDBalance = this.balances.getBalance(userId, "USD");
+    let sliipageMoney = 0;
+
     if (side == "BUY") {
       // check balance
 
-      const neededBal = price * qty;
-      const availBal = this.balances.getBalance(userId, symbol);
+      if (type == "LIMIT") {
+        const neededBal = price! * qty;
+        const availBal = this.balances.getBalance(userId, "USD");
 
-      if (neededBal > availBal) throw new InsufficientBalanceError();
+        if (neededBal > availBal) throw new InsufficientBalanceError();
 
-      // deduct bidders balance
-      this.balances.removeBalance(userId, symbol, neededBal);
+        // deduct bidders balance
+        this.balances.removeBalance(userId, "USD", neededBal);
+      } else {
+        // get market price
+        let marketPrice = 10;
+        const neededBal = marketPrice * qty;
+        const availBal = this.balances.getBalance(userId, "USD");
+
+        if (neededBal > availBal) throw new InsufficientBalanceError();
+
+        sliipageMoney = availBal - neededBal;
+
+        // make his balance zero
+        this.balances.removeBalance(userId, "USD", initialUSDBalance);
+      }
     } else {
       // check balance
       const availBal = this.balances.getBalance(userId, symbol);
@@ -41,8 +58,17 @@ export default class MatchingEngine {
 
     // place order in orderbook, get back fills
     let { newOrderId, fillsInfo, totalFilledQuantity } =
-      this.orderBook.createOrder(type, side, symbol, price, qty, userId);
+      this.orderBook.createOrder(
+        type,
+        side,
+        symbol,
+        qty,
+        userId,
+        price,
+        sliipageMoney,
+      );
 
+    let usdSpent = 0;
     // update balances based on fills
     fillsInfo.forEach(
       ({ buyerId, sellerId, price, bidPrice, qty, symbol: filledSymbol }) => {
@@ -51,9 +77,15 @@ export default class MatchingEngine {
 
         this.balances.addBalance(buyerId, filledSymbol, qty);
         this.balances.addBalance(sellerId, "USD", price * qty);
+
+        usdSpent += price * qty;
       },
     );
 
+    // return back locked money of user for market bid...  MAYBE : ( maybe also keep locked money info in balances )
+    if (type == "MARKET" && side == "BUY") {
+      this.balances.addBalance(userId, "USD", initialUSDBalance - usdSpent);
+    }
     // return new order info
     return {
       status: totalFilledQuantity == qty ? "FILLED" : "OPEN",
