@@ -150,4 +150,10 @@ export default class MatchingEngine {
   getDepth(symbol: CURRENCY_SYMBOL) {
     return this.orderBook.getDepth(symbol);
   }
+  getOrders() {
+    return this.orderBook.orders;
+  }
+  getFills() {
+    return this.orderBook.fills;
+  }
 }

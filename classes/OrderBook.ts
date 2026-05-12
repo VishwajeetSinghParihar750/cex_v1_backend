@@ -39,6 +39,7 @@ type ORDERBOOK = Partial<
 export default class OrderBook {
   orderBook: ORDERBOOK = {};
   orders: Record<ORDER_ID, ORDER> = {}; // here keep ref of item in orderbook, to not double memeory
+  fills: FILLS_INFO = [];
 
   private placeMarketBuyOrder = (
     type: TYPE,
@@ -129,6 +130,9 @@ export default class OrderBook {
       }
     }
 
+    // save fills
+    this.fills.push(...fillsToReturn);
+
     return {
       fillsInfo: fillsToReturn,
       newOrderId: currentOrder.orderId,
@@ -212,6 +216,8 @@ export default class OrderBook {
         oppositeSideOrders.eraseElementByKey(topOppositeSidePrice);
       }
     }
+
+    this.fills.push(...fillsToReturn);
 
     return {
       fillsInfo: fillsToReturn,
@@ -331,6 +337,8 @@ export default class OrderBook {
         this.orderBook[symbol].BIDS.setElement(price, prevPriceLevel);
       else this.orderBook[symbol].ASKS.setElement(price, prevPriceLevel);
     }
+
+    this.fills.push(...fillsToReturn);
 
     return {
       fillsInfo: fillsToReturn,
