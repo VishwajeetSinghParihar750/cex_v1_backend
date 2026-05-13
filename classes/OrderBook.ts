@@ -372,9 +372,10 @@ export default class OrderBook {
     totalFilledQuantity: number;
     fillsInfo: FILLS_INFO;
   } => {
+    let toReturn;
     if (type == "MARKET") {
       if (side == "BUY")
-        return this.placeMarketBuyOrder(
+        toReturn = this.placeMarketBuyOrder(
           type,
           side,
           symbol,
@@ -383,7 +384,7 @@ export default class OrderBook {
           maxMarketBidSpend!,
         );
       else
-        return this.placeMarketSellOrder(
+        toReturn = this.placeMarketSellOrder(
           type,
           side,
           symbol,
@@ -392,8 +393,20 @@ export default class OrderBook {
           userId,
         );
     } else {
-      return this.placeLimitOrder(type, side, symbol, price!, qty, userId);
+      toReturn = this.placeLimitOrder(type, side, symbol, price!, qty, userId);
     }
+
+    // TODO : maintain depthUpdateOffset
+    // TODO : find depthUpdateInfo
+    type depthUpdateInfo = { price: number; qty: number };
+    const depthUpdates: { asks: depthUpdateInfo[]; bids: depthUpdateInfo[] } = {
+      asks: [],
+      bids: [],
+    };
+    // TODO : setup event handler for this event, which will push to redis stream
+    // TODO : emit depthUpdateEvent on global eventBus
+
+    return toReturn;
   };
 
   cancelOrder = (

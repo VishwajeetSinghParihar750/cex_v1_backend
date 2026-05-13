@@ -73,6 +73,7 @@ export default class MatchingEngine {
       );
 
     let usdSpent = 0;
+
     // update balances based on fills
     fillsInfo.forEach(
       ({ buyerId, sellerId, price, bidPrice, qty, symbol: filledSymbol }) => {
@@ -83,6 +84,7 @@ export default class MatchingEngine {
         this.balances.addBalance(sellerId, "USD", price * qty);
 
         usdSpent += price * qty;
+
       },
     );
 
