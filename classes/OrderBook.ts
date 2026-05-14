@@ -247,6 +247,34 @@ export default class OrderBook {
     };
   };
 
+  private emitDepthUpdateEvents(symbol: CURRENCY_SYMBOL, depthUpdates: any) {
+    //  emit depthUpdateEvent on  eventBus
+    //  maintain depthUpdateOffset
+    switch (symbol) {
+      case "BTC":
+        this.emitEvent({
+          type: "depth.updated.btc_usd",
+          data: {
+            updateOffset: this.depthUpdateOffset[symbol]++,
+            updates: depthUpdates,
+          },
+        });
+        break;
+      case "SOL":
+        this.emitEvent({
+          type: "depth.updated.sol_usd",
+          data: {
+            updateOffset: this.depthUpdateOffset[symbol]++,
+            updates: depthUpdates,
+          },
+        });
+        break;
+
+      default:
+        break;
+    }
+  }
+
   private placeLimitOrder = (
     type: TYPE,
     side: SIDE,
@@ -272,6 +300,17 @@ export default class OrderBook {
       side,
       type,
       symbol,
+    };
+
+    // emit depth update events
+    //  find depthUpdateInfo
+
+    let depthUpdates: {
+      asks: Record<number, number>;
+      bids: Record<number, number>;
+    } = {
+      asks: {},
+      bids: {},
     };
 
     let fillsToReturn: FILLS_INFO = [];
@@ -304,12 +343,14 @@ export default class OrderBook {
             pendingQty,
           );
 
+          let exchangePrice = Math.min(frontOrder!.price, currentOrder.price);
+
           fillsToReturn.push({
             fillId: crypto.randomUUID(),
             bidPrice: Math.max(frontOrder!.price, currentOrder.price),
             buyerId: side == "BUY" ? userId : frontOrder!.userId,
             sellerId: side == "SELL" ? userId : frontOrder!.userId,
-            price: Math.min(frontOrder!.price, currentOrder.price),
+            price: exchangePrice,
             qty: toExchangeQty,
             symbol,
           });
@@ -317,6 +358,10 @@ export default class OrderBook {
           frontOrder!.filledQty += toExchangeQty;
           currentOrder.filledQty += toExchangeQty;
           topOppositeSidePriceLevel.totalQuantity -= toExchangeQty;
+
+          // update depthUpdates
+          depthUpdates[side == "BUY" ? "asks" : "bids"][topOppositeSidePrice] =
+            topOppositeSidePriceLevel.totalQuantity;
 
           if (frontOrder!.filledQty == frontOrder!.qty) {
             // remove from orders and orderbook
@@ -355,14 +400,21 @@ export default class OrderBook {
       prevPriceLevel.orders.pushFront(currentOrder);
 
       // put into orderbook object
-      if (side == "BUY")
+      if (side == "BUY") {
         this.orderBook[symbol].BIDS.setElement(price, prevPriceLevel);
-      else this.orderBook[symbol].ASKS.setElement(price, prevPriceLevel);
+      } else this.orderBook[symbol].ASKS.setElement(price, prevPriceLevel);
+
+      // update depthUpdates
+      depthUpdates[side == "BUY" ? "asks" : "bids"][price] =
+        prevPriceLevel.totalQuantity;
     }
 
     fillsToReturn.forEach((fill) => {
       this.fills[fill.fillId] = fill;
     });
+
+    //emit dpth udpate events
+    this.emitDepthUpdateEvents(symbol, depthUpdates);
 
     return {
       fillsInfo: fillsToReturn,
@@ -420,51 +472,15 @@ export default class OrderBook {
       toReturn = this.placeLimitOrder(type, side, symbol, price!, qty, userId);
     }
 
-    // emit depth update events
-    if (toReturn.fillsInfo.length > 0) {
-      //  find depthUpdateInfo
-      let depthUpdates: {
-        asks: Record<number, number>;
-        bids: Record<number, number>;
-      } = {
-        asks: {},
-        bids: {},
-      };
+    toReturn.fillsInfo.forEach((fillInfo) => {
+      let asksTotalQty = this.orderBook[fillInfo.symbol]?.ASKS.getElementByKey(
+        fillInfo.price,
+      )?.totalQuantity;
 
-      toReturn.fillsInfo.forEach((fillInfo) => {
-        let totalQuantity = this.orderBook[
-          fillInfo.symbol
-        ]?.ASKS.getElementByKey(fillInfo.price)?.totalQuantity;
-
-        depthUpdates.asks[fillInfo.price] = totalQuantity || 0;
-      });
-
-      //  emit depthUpdateEvent on  eventBus
-      //  maintain depthUpdateOffset
-      switch (symbol) {
-        case "BTC":
-          this.emitEvent({
-            type: "depth.updated.btc_usd",
-            data: {
-              updateOffset: this.depthUpdateOffset[symbol]++,
-              updates: depthUpdates,
-            },
-          });
-          break;
-        case "SOL":
-          this.emitEvent({
-            type: "depth.updated.sol_usd",
-            data: {
-              updateOffset: this.depthUpdateOffset[symbol]++,
-              updates: depthUpdates,
-            },
-          });
-          break;
-
-        default:
-          break;
-      }
-    }
+      let bidsTotalQty = this.orderBook[fillInfo.symbol]?.ASKS.getElementByKey(
+        fillInfo.price,
+      )?.totalQuantity;
+    });
 
     return toReturn;
   };
@@ -577,3 +593,5 @@ export default class OrderBook {
     return toReturn;
   };
 }
+
+// todo : add depthUpdaes to market order too
