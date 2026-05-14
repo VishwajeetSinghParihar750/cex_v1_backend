@@ -1,9 +1,20 @@
 import "dotenv/config";
 import MatchingEngine from "./classes/MatchingEngine.js";
 import { createClient } from "redis";
+import EventBus from "./classes/EventBus.js";
 
-const matchingEngine = new MatchingEngine();
+// TODO : put all this logic in a class from this file, A CENTRAL INTERFACE
+// so index is empty and u simpply initialize that class here
+
 const redisClient = createClient({ url: process.env.REDIS_URL! });
+const globalEventBus = new EventBus();
+const matchingEngine = new MatchingEngine(globalEventBus);
+
+const setupEventHandler = () => {
+  globalEventBus.on("ALL_EVENTS", (event) => {
+    redisClient.xAdd(event.type, "*", { data: JSON.stringify(event.data) });
+  });
+};
 
 type ENGINE_REQUEST_TYPE =
   | "create_order"
@@ -216,6 +227,8 @@ const setupEngine = async () => {
   redisClient.on("error", (err) => {
     console.log("redis error : ", err);
   });
+
+  setupEventHandler();
 
   await redisClient.connect();
   console.log("REDIS SETUP DONE, WAITING FOR ENGINE REQUESTS");

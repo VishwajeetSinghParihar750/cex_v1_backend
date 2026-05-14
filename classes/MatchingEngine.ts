@@ -2,14 +2,17 @@ import OrderBook, { type FILLS_INFO } from "./OrderBook.js";
 import Balances from "./Balances.js";
 import type { CURRENCY_SYMBOL, ORDER_ID, SIDE, TYPE } from "../types/order.js";
 import { InsufficientBalanceError } from "./Errors/MatchingEngine.js";
+import EventBus from "./EventBus.js";
 
 export default class MatchingEngine {
   private balances: Balances;
   private orderBook: OrderBook;
+  private eventBus: EventBus;
 
-  constructor() {
+  constructor(eventBus: EventBus) {
+    this.eventBus = eventBus;
     this.balances = new Balances();
-    this.orderBook = new OrderBook();
+    this.orderBook = new OrderBook(eventBus);
   }
 
   createOrder(
@@ -84,7 +87,6 @@ export default class MatchingEngine {
         this.balances.addBalance(sellerId, "USD", price * qty);
 
         usdSpent += price * qty;
-
       },
     );
 
@@ -164,3 +166,5 @@ export default class MatchingEngine {
     return this.orderBook.fills;
   }
 }
+
+// TODO : setup event handler for events, which will push to common event bus , which wil push to redis

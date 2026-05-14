@@ -1,6 +1,15 @@
 import { OrderedMap, LinkList } from "js-sdsl";
-import type { CURRENCY_SYMBOL, ORDER_ID, SIDE, TYPE } from "../types/order.js";
+import {
+  CURRENCY_SYMBOL_ARRAY,
+  type CURRENCY_SYMBOL,
+  type ORDER_ID,
+  type SIDE,
+  type TYPE,
+} from "../types/order.js";
 import { assert } from "node:console";
+import type { ORDERBOOK_EVENT } from "../types/events/orderbook.js";
+import type { ENGINE_EVENT } from "../types/events/event.js";
+import type EventBus from "./EventBus.js";
 
 type ORDER = {
   userId: string;
@@ -43,6 +52,9 @@ export default class OrderBook {
   orderBook: ORDERBOOK = {};
   orders: Record<ORDER_ID, ORDER> = {}; // here keep ref of item in orderbook, to not double memeory
   fills: Record<string, FILL_INFO> = {};
+
+  eventBus: EventBus;
+  depthUpdateOffset: Record<CURRENCY_SYMBOL, number>;
 
   private placeMarketBuyOrder = (
     type: TYPE,
@@ -359,6 +371,18 @@ export default class OrderBook {
     };
   };
 
+  emitEvent(event: ENGINE_EVENT) {
+    this.eventBus.emit(event);
+  }
+
+  constructor(eventBus: EventBus) {
+    this.eventBus = eventBus;
+    this.depthUpdateOffset = {} as Record<CURRENCY_SYMBOL, number>;
+    CURRENCY_SYMBOL_ARRAY.forEach((cur) => {
+      this.depthUpdateOffset[cur] = 0;
+    });
+  }
+
   createOrder = (
     type: TYPE,
     side: SIDE,
@@ -396,15 +420,51 @@ export default class OrderBook {
       toReturn = this.placeLimitOrder(type, side, symbol, price!, qty, userId);
     }
 
-    // TODO : maintain depthUpdateOffset
-    // TODO : find depthUpdateInfo
-    type depthUpdateInfo = { price: number; qty: number };
-    const depthUpdates: { asks: depthUpdateInfo[]; bids: depthUpdateInfo[] } = {
-      asks: [],
-      bids: [],
-    };
-    // TODO : setup event handler for this event, which will push to redis stream
-    // TODO : emit depthUpdateEvent on global eventBus
+    // emit depth update events
+    if (toReturn.fillsInfo.length > 0) {
+      //  find depthUpdateInfo
+      let depthUpdates: {
+        asks: Record<number, number>;
+        bids: Record<number, number>;
+      } = {
+        asks: {},
+        bids: {},
+      };
+
+      toReturn.fillsInfo.forEach((fillInfo) => {
+        let totalQuantity = this.orderBook[
+          fillInfo.symbol
+        ]?.ASKS.getElementByKey(fillInfo.price)?.totalQuantity;
+
+        depthUpdates.asks[fillInfo.price] = totalQuantity || 0;
+      });
+
+      //  emit depthUpdateEvent on  eventBus
+      //  maintain depthUpdateOffset
+      switch (symbol) {
+        case "BTC":
+          this.emitEvent({
+            type: "depth.updated.btc_usd",
+            data: {
+              updateOffset: this.depthUpdateOffset[symbol]++,
+              updates: depthUpdates,
+            },
+          });
+          break;
+        case "SOL":
+          this.emitEvent({
+            type: "depth.updated.sol_usd",
+            data: {
+              updateOffset: this.depthUpdateOffset[symbol]++,
+              updates: depthUpdates,
+            },
+          });
+          break;
+
+        default:
+          break;
+      }
+    }
 
     return toReturn;
   };
