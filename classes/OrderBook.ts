@@ -594,7 +594,9 @@ export default class OrderBook {
     if (this.orders[orderId]) return { ...this.orders[orderId] };
 
     if (false) {
+      // TODO :
       // check in db, etc if its already filled and is there
+      // send request to some other guy to fulfill
     }
 
     return null;

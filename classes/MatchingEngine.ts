@@ -28,7 +28,6 @@ export default class MatchingEngine {
     fills?: FILLS_INFO;
   } {
     const initialUSDBalance = this.balances.getBalance(userId, "USD") as number;
-    let sliipageMoney = 0;
 
     if (side == "BUY") {
       // check balance
@@ -42,15 +41,7 @@ export default class MatchingEngine {
         // deduct bidders balance
         this.balances.removeBalance(userId, "USD", neededBal);
       } else {
-        // get market price
-        let marketPrice = 10;
-        const neededBal = marketPrice * qty;
-        const availBal = this.balances.getBalance(userId, "USD") as number;
-
-        if (neededBal > availBal) throw new InsufficientBalanceError();
-
-        sliipageMoney = availBal - neededBal;
-
+        if (initialUSDBalance == 0) throw new InsufficientBalanceError();
         // make his balance zero
         this.balances.removeBalance(userId, "USD", initialUSDBalance);
       }
@@ -72,7 +63,7 @@ export default class MatchingEngine {
         qty,
         userId,
         price,
-        sliipageMoney,
+        initialUSDBalance,
       );
 
     let usdSpent = 0;
