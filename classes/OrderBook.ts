@@ -7,7 +7,6 @@ import {
   type TYPE,
 } from "../types/order.js";
 import { assert } from "node:console";
-import type { ORDERBOOK_EVENT } from "../types/events/orderbook.js";
 import type { ENGINE_EVENT } from "../types/events/event.js";
 import type EventBus from "./EventBus.js";
 
@@ -54,7 +53,7 @@ export default class OrderBook {
   fills: Record<string, FILL_INFO> = {};
 
   eventBus: EventBus;
-  depthUpdateOffset: Record<CURRENCY_SYMBOL, number>;
+  depthUpdateOffset: Map<CURRENCY_SYMBOL, number>;
 
   private placeMarketBuyOrder = (
     type: TYPE,
@@ -81,6 +80,17 @@ export default class OrderBook {
       side,
       type,
       symbol,
+    };
+
+    // emit depth update events
+    //  find depthUpdateInfo
+
+    let depthUpdates: {
+      asks: Map<number, number>;
+      bids: Map<number, number>;
+    } = {
+      asks: new Map(),
+      bids: new Map(),
     };
 
     let fillsToReturn: FILLS_INFO = [];
@@ -129,6 +139,12 @@ export default class OrderBook {
         currentOrder.filledQty += toExchangeQty;
         topOppositeSidePriceLevel.totalQuantity -= toExchangeQty;
 
+        // update depthUpdates for opposite side, current side does not change orderbook on same side
+        depthUpdates[side == "BUY" ? "asks" : "bids"].set(
+          topOppositeSidePrice,
+          topOppositeSidePriceLevel.totalQuantity,
+        );
+
         if (frontOrder!.filledQty == frontOrder!.qty) {
           // remove from orders and orderbook
           delete this.orders[frontOrder!.orderId];
@@ -151,6 +167,8 @@ export default class OrderBook {
     fillsToReturn.forEach((fill) => {
       this.fills[fill.fillId] = fill;
     });
+
+    this.emitDepthUpdateEvents(symbol, depthUpdates);
 
     return {
       fillsInfo: fillsToReturn,
@@ -184,6 +202,17 @@ export default class OrderBook {
       side,
       type,
       symbol,
+    };
+
+    // emit depth update events
+    //  find depthUpdateInfo
+
+    let depthUpdates: {
+      asks: Map<number, number>;
+      bids: Map<number, number>;
+    } = {
+      asks: new Map(),
+      bids: new Map(),
     };
 
     let fillsToReturn: FILLS_INFO = [];
@@ -225,6 +254,12 @@ export default class OrderBook {
         currentOrder.filledQty += toExchangeQty;
         topOppositeSidePriceLevel.totalQuantity -= toExchangeQty;
 
+        // update depthUpdates for opposite side, current side does not change orderbook on same side
+        depthUpdates[side == "BUY" ? "asks" : "bids"].set(
+          topOppositeSidePrice,
+          topOppositeSidePriceLevel.totalQuantity,
+        );
+
         if (frontOrder!.filledQty == frontOrder!.qty) {
           // remove from orders and orderbook
           delete this.orders[frontOrder!.orderId];
@@ -239,6 +274,8 @@ export default class OrderBook {
     fillsToReturn.forEach((fill) => {
       this.fills[fill.fillId] = fill;
     });
+
+    this.emitDepthUpdateEvents(symbol, depthUpdates);
 
     return {
       fillsInfo: fillsToReturn,
@@ -255,24 +292,28 @@ export default class OrderBook {
         this.emitEvent({
           type: "depth.updated.btc_usd",
           data: {
-            updateOffset: this.depthUpdateOffset[symbol]++,
+            updateOffset: this.depthUpdateOffset.get(symbol),
             updates: depthUpdates,
           },
         });
+
         break;
+
       case "SOL":
         this.emitEvent({
           type: "depth.updated.sol_usd",
           data: {
-            updateOffset: this.depthUpdateOffset[symbol]++,
+            updateOffset: this.depthUpdateOffset.get(symbol),
             updates: depthUpdates,
           },
         });
         break;
 
       default:
-        break;
+        return; //
     }
+
+    this.depthUpdateOffset.set(symbol, this.depthUpdateOffset.get(symbol)! + 1);
   }
 
   private placeLimitOrder = (
@@ -306,11 +347,11 @@ export default class OrderBook {
     //  find depthUpdateInfo
 
     let depthUpdates: {
-      asks: Record<number, number>;
-      bids: Record<number, number>;
+      asks: Map<number, number>;
+      bids: Map<number, number>;
     } = {
-      asks: {},
-      bids: {},
+      asks: new Map(),
+      bids: new Map(),
     };
 
     let fillsToReturn: FILLS_INFO = [];
@@ -359,9 +400,11 @@ export default class OrderBook {
           currentOrder.filledQty += toExchangeQty;
           topOppositeSidePriceLevel.totalQuantity -= toExchangeQty;
 
-          // update depthUpdates
-          depthUpdates[side == "BUY" ? "asks" : "bids"][topOppositeSidePrice] =
-            topOppositeSidePriceLevel.totalQuantity;
+          // update depthUpdates for opposite side, current side update will happen with this pending order in end
+          depthUpdates[side == "BUY" ? "asks" : "bids"].set(
+            topOppositeSidePrice,
+            topOppositeSidePriceLevel.totalQuantity,
+          );
 
           if (frontOrder!.filledQty == frontOrder!.qty) {
             // remove from orders and orderbook
@@ -405,8 +448,10 @@ export default class OrderBook {
       } else this.orderBook[symbol].ASKS.setElement(price, prevPriceLevel);
 
       // update depthUpdates
-      depthUpdates[side == "BUY" ? "asks" : "bids"][price] =
-        prevPriceLevel.totalQuantity;
+      depthUpdates[side == "BUY" ? "bids" : "asks"].set(
+        price,
+        prevPriceLevel.totalQuantity,
+      );
     }
 
     fillsToReturn.forEach((fill) => {
@@ -429,9 +474,9 @@ export default class OrderBook {
 
   constructor(eventBus: EventBus) {
     this.eventBus = eventBus;
-    this.depthUpdateOffset = {} as Record<CURRENCY_SYMBOL, number>;
+    this.depthUpdateOffset = new Map();
     CURRENCY_SYMBOL_ARRAY.forEach((cur) => {
-      this.depthUpdateOffset[cur] = 0;
+      this.depthUpdateOffset.set(cur, 0);
     });
   }
 
