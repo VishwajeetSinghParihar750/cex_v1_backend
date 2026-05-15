@@ -97,7 +97,7 @@ class EngineServer {
     engineRequest: ENGINE_REQUEST,
   ): ENGINE_RESPONSE => {
     try {
-      let orders = this.matchingEngine.getOrders();
+      let orders = this.matchingEngine.getOrders(engineRequest.payload.symbol);
       return {
         requestId: engineRequest.requestId,
         type: "orders",

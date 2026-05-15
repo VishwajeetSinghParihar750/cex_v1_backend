@@ -599,6 +599,21 @@ export default class OrderBook {
 
     return null;
   };
+  getOrders = (symbol: CURRENCY_SYMBOL) => {
+    let ordersInfo = {
+      updateOffset: this.depthUpdateOffset.get(symbol),
+      orders: { asks: [] as any[], bids: [] as any[] },
+    };
+
+    this.orderBook[symbol]?.ASKS.forEach(([_, priceLevel]) => {
+      priceLevel.orders.forEach((order) => ordersInfo.orders.asks.push(order));
+    });
+    this.orderBook[symbol]?.BIDS.forEach(([_, priceLevel]) => {
+      priceLevel.orders.forEach((order) => ordersInfo.orders.bids.push(order));
+    });
+
+    return ordersInfo;
+  };
 
   // count is how many prices you want
   getDepth = (
@@ -638,5 +653,3 @@ export default class OrderBook {
     return toReturn;
   };
 }
-
-// todo : add depthUpdaes to market order too
